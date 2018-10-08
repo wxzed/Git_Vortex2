@@ -5,6 +5,7 @@
 #include "nrf_peripherals.h"
 #include "sdk_config.h"
 #include "vortex2_jump.h"
+#include "nrf_sdm.h"
 
 #define HANDLER_MODE_EXIT 0xFFFFFFF9
 #define MBR_SIZE                (0x28000)
@@ -65,6 +66,7 @@ void vortex2_app_start(uint32_t start_addr){
     NVIC->ICER[1]=0xFFFFFFFF;
     NVIC->ICPR[1]=0xFFFFFFFF;
 #endif
+    sd_softdevice_vector_table_base_set(start_addr);
     vortex2_app_start_final(start_addr);
 }
 

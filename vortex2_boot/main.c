@@ -10,6 +10,7 @@
 #include "nrf_sdh_ble.h"
 #include "nrf_fstorage_sd.h"
 
+
 #define BOOT0_ADDR    0x30000
 #define BOOT1_ADDR    0x56000
 /**
@@ -119,13 +120,16 @@ int main(void)
             bsp_board_led_invert(i);
             nrf_delay_ms(500);
         }
+        vortex2_app_start(BOOT0_ADDR);
+        /*
         if(strcmp(data,"boot0") == 0){
             //printf("boot0\r\n");
-            vortex2_app_start(BOOT0_ADDR);
+            
+            
         }else{
             //printf("boot1\r\n");
             //vortex2_app_start(BOOT1_ADDR);
-        }
+        }*/
     }
 }
 
