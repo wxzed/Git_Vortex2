@@ -28,23 +28,47 @@
 #define HID_GENERIC_INTERFACE  2
 #define HID_GENERIC_EPIN       NRF_DRV_USBD_EPIN3
 
+#define HID_DATA_EPOUT      NRF_DRV_USBD_EPOUT5
+
 #define REPORT_IN_QUEUE_SIZE    1
 
-#define REPORT_OUT_MAXSIZE  0
+#define REPORT_OUT_MAXSIZE 64
 
-#define HID_GENERIC_EP_COUNT  1
+#define HID_GENERIC_EP_COUNT  2
 
 #define ENDPOINT_LIST()                                      \
 (                                                            \
         HID_GENERIC_EPIN                                     \
+        ,NRF_DRV_USBD_EPOUT5                                  \
 )
+
 static bool m_report_pending;
-APP_USBD_HID_GENERIC_SUBCLASS_REPORT_DESC(mouse_desc,APP_USBD_HID_MOUSE_REPORT_DSC_BUTTON(2));
-static const app_usbd_hid_subclass_desc_t * reps[] = {&mouse_desc};
+#define APP_USBD_HID_VORTEX2_REPORT_DSC(dst){                            \
+    0x05, 0x8C,       /* Usage Page (Generic Desktop),       */     \
+    0x09, 0x06,       /* Usage (),                      */     \
+    0xA1, 0x01,       /*  Collection (Application),          */     \
+    0x09, 0x06,       /*   Usage (Pointer),                  */     \
+    0x15, 0x00,                                                     \
+    0x26, 0x00, 0xff,                                               \
+    0x75, 0x08,       /* REPORT_SIZE (8) */                         \
+    0x95, 0x40,       /* REPORT_COUNT (64) */                       \
+    0x91, 0x82,                                                     \
+    0x09, 0x06,                                                     \
+    0x15, 0x00,                                                     \
+    0x26, 0x00, 0xff,                                               \
+    0x75, 0x08,       /* REPORT_SIZE (8) */                         \
+    0x95, 0x40,       /* REPORT_COUNT (64) */                       \
+    0x81, 0x82, /* INPUT(Data,Var,Abs,Vol) */                       \
+    0xc0 /* END_COLLECTION */                                       \
+}
+APP_USBD_HID_GENERIC_SUBCLASS_REPORT_DESC(vortex_desc, APP_USBD_HID_VORTEX2_REPORT_DSC(0));
+static const app_usbd_hid_subclass_desc_t * reps[] = {&vortex_desc};
 
 static bool m_usb_connected = false;
 static void cdc_acm_user_ev_handler(app_usbd_class_inst_t const * p_inst,
                                     app_usbd_cdc_acm_user_event_t event);
+
+static uint8_t senddata[64]={0x00};
 
 
 static char m_cdc_data_array[CDC_MAX_DATA_LEN];
@@ -52,7 +76,6 @@ static char CDC_DATA_BUF[CDC_MAX_DATA_LEN];
 
 static void hid_user_ev_handler(app_usbd_class_inst_t const * p_inst,
                                 app_usbd_hid_user_event_t event);
-
 APP_USBD_CDC_ACM_GLOBAL_DEF(m_app_cdc_acm,
                             cdc_acm_user_ev_handler,
                             CDC_ACM_COMM_INTERFACE,
@@ -61,7 +84,7 @@ APP_USBD_CDC_ACM_GLOBAL_DEF(m_app_cdc_acm,
                             CDC_ACM_DATA_EPIN,
                             CDC_ACM_DATA_EPOUT,
                             APP_USBD_CDC_COMM_PROTOCOL_AT_V250);
-
+/*
 APP_USBD_HID_GENERIC_GLOBAL_DEF(m_app_hid_generic,
                                 HID_GENERIC_INTERFACE,
                                 hid_user_ev_handler,
@@ -70,7 +93,17 @@ APP_USBD_HID_GENERIC_GLOBAL_DEF(m_app_hid_generic,
                                 REPORT_IN_QUEUE_SIZE,
                                 REPORT_OUT_MAXSIZE,
                                 APP_USBD_HID_SUBCLASS_BOOT,
-                                APP_USBD_HID_PROTO_MOUSE);
+                                APP_USBD_HID_PROTO_MOUSE);*/
+APP_USBD_HID_GENERIC_GLOBAL_DEF(m_app_hid_generic,
+                                HID_GENERIC_INTERFACE,
+                                hid_user_ev_handler,
+                                ENDPOINT_LIST(), 
+                                reps,
+                                REPORT_IN_QUEUE_SIZE,
+                                REPORT_OUT_MAXSIZE,
+                                APP_USBD_HID_SUBCLASS_BOOT,
+                                APP_USBD_HID_PROTO_GENERIC);
+
 static void usbd_user_ev_handler(app_usbd_event_type_t event)
 {
     switch (event)
@@ -117,6 +150,17 @@ static void usbd_user_ev_handler(app_usbd_event_type_t event)
             break;
     }
 }
+size_t datasize;
+uint64_t len = 0;
+
+static void sendData(app_usbd_hid_generic_t const * p_generic){
+    app_usbd_hid_inst_t const * p_hinst = &p_generic->specific.inst.hid_inst;
+    app_usbd_hid_generic_in_report_set(
+            &m_app_hid_generic,
+            p_hinst->p_rep_buffer_out->p_buff+1,
+            datasize);
+    NRF_LOG_INFO("0x%x",p_hinst->p_rep_buffer_out->p_buff[1]);
+}
 
 static void hid_user_ev_handler(app_usbd_class_inst_t const * p_inst,
                                 app_usbd_hid_user_event_t event)
@@ -125,12 +169,17 @@ static void hid_user_ev_handler(app_usbd_class_inst_t const * p_inst,
     {
         case APP_USBD_HID_USER_EVT_OUT_REPORT_READY:
         {
+            app_usbd_hid_generic_out_report_get(&m_app_hid_generic,&datasize);
+            len += datasize-1;
+            NRF_LOG_INFO("len=%ld,size=%d",len,datasize-1);
             /* No output report defined for this example.*/
+            //sendData(&m_app_hid_generic);
             ASSERT(0);
             break;
         }
         case APP_USBD_HID_USER_EVT_IN_REPORT_DONE:
         {
+            //NRF_LOG_INFO("APP_USBD_HID_USER_EVT_IN_REPORT_DONE");
             m_report_pending = false;
             //hid_generic_mouse_process_state();
             //bsp_board_led_invert(LED_HID_REP_IN);
@@ -147,9 +196,12 @@ static void hid_user_ev_handler(app_usbd_class_inst_t const * p_inst,
             break;
         }
         default:
+            NRF_LOG_INFO("default");
             break;
     }
 }
+
+
 static void cdc_acm_user_ev_handler(app_usbd_class_inst_t const * p_inst,
                                     app_usbd_cdc_acm_user_event_t event)
 {
@@ -192,7 +244,6 @@ static void cdc_acm_user_ev_handler(app_usbd_class_inst_t const * p_inst,
 
             do
             {
-
                 size_t size = app_usbd_cdc_acm_rx_size(p_cdc_acm);
                 app_uart_put(m_cdc_data_array[index-1]);
                 ret = app_usbd_cdc_acm_read(&m_app_cdc_acm,
@@ -234,11 +285,12 @@ void init_vortex2_usb(void){
     ret_code_t ret;
     ret = nrf_drv_clock_init();
     APP_ERROR_CHECK(ret);
-    app_usbd_serial_num_generate();
+    //app_usbd_serial_num_generate();
     ret = app_usbd_init(&usbd_config);
     APP_ERROR_CHECK(ret);
-    init_usb_cdc();
+    //init_usb_cdc();
     init_usb_hid();
     ret = app_usbd_power_events_enable();
     APP_ERROR_CHECK(ret);
+
 }

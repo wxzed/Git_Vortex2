@@ -6057,6 +6057,11 @@
 #define APP_USBD_VID 0x1915
 #endif
 
+#ifndef APP_USBD_VID
+#define APP_USBD_VID 0x2341
+#endif
+
+
 // <o> APP_USBD_PID - Product ID  <0x0000-0xFFFF> 
 
 
@@ -6065,6 +6070,11 @@
 #ifndef APP_USBD_PID
 #define APP_USBD_PID 0x521A
 #endif
+
+#ifndef APP_USBD_PID
+#define APP_USBD_PID 0x0043
+#endif
+
 
 // <o> APP_USBD_DEVICE_VER_MAJOR - Device version, major part  <0-99> 
 
