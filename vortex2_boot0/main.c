@@ -89,6 +89,7 @@
 
 #define DEAD_BEEF                       0xDEADBEEF                                  /**< Value used as error code on stack dump, can be used to identify stack location on stack unwind. */
 #define MYNAME                          "boot0"
+#define VERSION                         "V0.1"
 
 #ifdef BSP_BUTTON_0
     #define PIN_IN BSP_BUTTON_0
@@ -158,26 +159,46 @@ static void button_init(void)
 static void jump_boot_app()
 {
     nrf_delay_ms(100);
-    uint8_t readdata[8];
-    uint8_t run_who[8];
-    if(*(uint32_t*)VRAM_ADDR == 0xFFFFFFFF){/**/
-        vortex2_flash_write_bytes(VRAM_ADDR,MYNAME,5);
+    uint8_t myname[9];
+    uint8_t readdata[9];
+    uint8_t run_who[9];
+    uint8_t version[9];
+    memset(myname,'\0',9);
+    memset(readdata,'\0',9);
+    memset(run_who,'\0',9);
+    memset(version,'\0',9);
+    vortex2_flash_read_bytes(VRAM_ADDR,myname,8);
+    vortex2_flash_read_bytes(VRAM_ADDR+8,readdata,8);
+    vortex2_flash_read_bytes(VRAM_ADDR+16,run_who,8);
+    vortex2_flash_read_bytes(VRAM_ADDR+24,version,8);
+    if(strncmp(myname,MYNAME,strlen(MYNAME)) != 0){                                      /*don't have boot message*/
+        vortex2_updata_vram_messge(VRAM_ADDR,MYNAME);
     }
-    if(nrf_gpio_pin_read(BSP_BUTTON_0)){                      /*don't press the button*/
-       vortex2_flash_read_bytes(VRAM_ADDR+8,readdata,6);
-       vortex2_flash_read_bytes(VRAM_ADDR+0x10,run_who,4);
-       if(strcmp(run_who,"boot") == 0){                       /*read run boot or application flag*/
-          vortex2_flash_page_erase(VRAM_ADDR);
-          vortex2_flash_write_bytes(VRAM_ADDR,MYNAME,5);
-          vortex2_flash_write_bytes(VRAM_ADDR+8,readdata,6);
-          vortex2_flash_write_bytes(VRAM_ADDR+16,"APP0",4);   /*restore application flag*/
+    if(strncmp(version,VERSION,strlen(VERSION)) != 0){                                             /*update version message*/
+        vortex2_updata_vram_messge(VRAM_ADDR+24,VERSION);                         /*write version*/
+    }
+    if(nrf_gpio_pin_read(BSP_BUTTON_0)){                                          /*don't press the button*/
+       if(strncmp(run_who,"boot",strlen("boot")) == 0){                                           /*read run boot or application flag*/
+          vortex2_updata_vram_messge(VRAM_ADDR+16,"APP0");                        /*restore application flag*/
        }else{
-          if(strcmp(readdata,"APP_OK") == 0){                 /*APP Verification passed*/
+          if(strncmp(readdata,"APP_OK",strlen("APP_OK")) == 0){                                     /*APP Verification passed*/
               vortex2_app_start(APP_ADDR);
+          }else if(strncmp(readdata,"APPERR",strlen("APPERR")) == 0){
+                //run boot
+          }else{
+              if((readdata[0] == readdata[1]) && (readdata[1] == 0xFF)){          /*first write flash*/
+                  if(*(uint32_t*)APP_ADDR != 0xFFFFFFFF){
+                      vortex2_updata_vram_messge(VRAM_ADDR+8,"APP_OK"); 
+                      vortex2_updata_vram_messge(VRAM_ADDR+16,"APP0"); 
+                      vortex2_app_start(APP_ADDR);
+                  }else{
+                      //NRF_LOG_INFO("running boot");
+                  }
+              }
           }
        }
     }else{
-       NRF_LOG_INFO("running boot");
+       //NRF_LOG_INFO("running boot");
     }
 }
 static void blink_init()
@@ -193,36 +214,39 @@ static void blink()
     nrf_gpio_pin_set(LED_2);
     nrf_gpio_pin_set(LED_3);
     nrf_gpio_pin_set(LED_4);
-    nrf_delay_ms(500);
+    nrf_delay_ms(100);
     nrf_gpio_pin_clear(LED_1);
     nrf_gpio_pin_clear(LED_2);
     nrf_gpio_pin_clear(LED_3);
     nrf_gpio_pin_clear(LED_4);
-    nrf_delay_ms(500);
+    nrf_delay_ms(100);
 }
 int main(void)
 {
     ret_code_t ret;
-    init_vortex2_uart();
+    //init_vortex2_uart();
     log_init();
+    /*
+    blink_init();
     for(int i = 0; i<10; i++){
       blink();
     }
-    nrf_gpio_pin_clear(LED_2);
-    nrf_gpio_pin_clear(LED_4);
+    nrf_gpio_pin_set(LED_2);
+    nrf_gpio_pin_set(LED_4);*/
     //timers_init();
     //power_management_init();
+    //init_vortex2_uart();
     button_init();
+    //vortex2_app_start(APP_ADDR);
     jump_boot_app();
     init_vortex2_usb();
-    //init_vortex2_ble();
     NRF_LOG_INFO("Debug logging for UART over RTT started.\r\n");
     for (;;)
     {
         while (app_usbd_event_queue_process())
         {
         }
-        idle_state_handle();
+        //idle_state_handle();
     }
 }
 

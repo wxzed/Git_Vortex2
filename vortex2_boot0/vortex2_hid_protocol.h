@@ -25,7 +25,7 @@ typedef struct protocol_data
     uint8_t ctr0;
     uint8_t ctr1;
     uint32_t addr;
-    uint8_t flash_data[32];
+    uint8_t flash_data[54];
 }protocol_data_t;
 
 #endif

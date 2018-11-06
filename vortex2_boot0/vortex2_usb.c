@@ -29,11 +29,11 @@
 #define CDC_ACM_DATA_EPOUT      NRF_DRV_USBD_EPOUT1
 
 #define HID_GENERIC_INTERFACE  2
-#define HID_GENERIC_EPIN       NRF_DRV_USBD_EPIN3
+#define HID_GENERIC_EPIN       NRF_DRV_USBD_EPIN2
 
-#define HID_DATA_EPOUT      NRF_DRV_USBD_EPOUT5
+#define HID_DATA_EPOUT      NRF_DRV_USBD_EPOUT1
 
-#define REPORT_IN_QUEUE_SIZE    1
+#define REPORT_IN_QUEUE_SIZE    32
 
 #define REPORT_OUT_MAXSIZE 64
 
@@ -42,9 +42,9 @@
 #define ENDPOINT_LIST()                                      \
 (                                                            \
         HID_GENERIC_EPIN                                     \
-        ,NRF_DRV_USBD_EPOUT5                                  \
+        ,HID_DATA_EPOUT                                  \
 )
-
+#if 0
 #define APP_USBD_HID_VORTEX2_REPORT_DSC(dst){                            \
     0x05, 0x8C,       /* Usage Page (Generic Desktop),       */     \
     0x09, 0x06,       /* Usage (),                      */     \
@@ -63,6 +63,27 @@
     0x81, 0x82, /* INPUT(Data,Var,Abs,Vol) */                       \
     0xc0 /* END_COLLECTION */                                       \
 }
+#endif
+#if 1
+#define APP_USBD_HID_VORTEX2_REPORT_DSC(dst){                            \
+    0x05, 0x8C,       /* Usage Page (Generic Desktop),       */     \
+    0x09, 0x01,       /* Usage (),                      */     \
+    0xA1, 0x01,       /*  Collection (Application),          */     \
+    0x09, 0x03,       /*   Usage (Pointer),                  */     \
+    0x15, 0x00,                                                     \
+    0x26, 0x00, 0xff,                                               \
+    0x75, 0x08,       /* REPORT_SIZE (8) */                         \
+    0x95, 0x40,       /* REPORT_COUNT (64) */                       \
+    0x81, 0x02,                                                     \
+    0x09, 0x04,                                                     \
+    0x15, 0x00,                                                     \
+    0x26, 0x00, 0xff,                                               \
+    0x75, 0x08,       /* REPORT_SIZE (8) */                         \
+    0x95, 0x40,       /* REPORT_COUNT (64) */                       \
+    0x91, 0x02, /* OUTPUT(Data,Var,Abs,Vol) */                       \
+    0xc0 /* END_COLLECTION */                                       \
+}
+#endif
 APP_USBD_HID_GENERIC_SUBCLASS_REPORT_DESC(vortex_desc, APP_USBD_HID_VORTEX2_REPORT_DSC(0));
 static const app_usbd_hid_subclass_desc_t * reps[] = {&vortex_desc};
 
@@ -78,6 +99,7 @@ static char CDC_DATA_BUF[CDC_MAX_DATA_LEN];
 
 static void hid_user_ev_handler(app_usbd_class_inst_t const * p_inst,
                                 app_usbd_hid_user_event_t event);
+                                /*
 APP_USBD_CDC_ACM_GLOBAL_DEF(m_app_cdc_acm,
                             cdc_acm_user_ev_handler,
                             CDC_ACM_COMM_INTERFACE,
@@ -85,7 +107,7 @@ APP_USBD_CDC_ACM_GLOBAL_DEF(m_app_cdc_acm,
                             CDC_ACM_COMM_EPIN,
                             CDC_ACM_DATA_EPIN,
                             CDC_ACM_DATA_EPOUT,
-                            APP_USBD_CDC_COMM_PROTOCOL_AT_V250);
+                            APP_USBD_CDC_COMM_PROTOCOL_AT_V250);*/
 APP_USBD_HID_GENERIC_GLOBAL_DEF(m_app_hid_generic,
                                 HID_GENERIC_INTERFACE,
                                 hid_user_ev_handler,
@@ -148,13 +170,13 @@ uint64_t len = 0;
 uint8_t now_status = idle_status;
 uint8_t report_success_data[]       ={0x55,0xAA,0x06,0x11,0x10,0x01,0x00,0x00,0x00,0x00};
 uint8_t report_fail_data[]          ={0x55,0xAA,0x06,0x10,0x10,0x00,0x00,0x00,0x00,0x00};
-uint8_t report_recevice_done_data[] ={0x55,0xAA,0x06,0x20,0x10,0x10,0x00,0x00,0x00,0x00};
+uint8_t report_receive_done_data[]  ={0x55,0xAA,0x06,0x20,0x10,0x10,0x00,0x00,0x00,0x00};
 uint8_t report_data[REPORT_OUT_MAXSIZE];
 static void report_hid_data(uint8_t *data)
 {
-    memset(report_data,0xFF,REPORT_OUT_MAXSIZE);
+    memset(report_data,0x00,REPORT_OUT_MAXSIZE);
     memcpy(report_data,data,10);
-    app_usbd_hid_generic_in_report_set(&m_app_hid_generic,report_data,REPORT_OUT_MAXSIZE);
+    app_usbd_hid_generic_in_report_set(&m_app_hid_generic,report_data,64);
 }
 static void analyze_data(uint8_t *data)
 {
@@ -162,14 +184,34 @@ static void analyze_data(uint8_t *data)
         uint8_t len = data[2];
         if(data[4] == writeflash){
             now_status = write_status;
-            NRF_LOG_INFO("writeflash");
             report_hid_data(report_success_data);
         }
     }else{/*Invalid data*/
-
     }
 }
 struct protocol_data mydata;
+static void reset_protocol()
+{
+  mydata.head0 = 0xFF;
+  mydata.head1 = 0xFF;
+  mydata.len   = 0x00;
+  mydata.cs    = 0xFF;
+  mydata.ctr0  = 0xFF;
+  mydata.ctr1  = 0xFF;
+}
+static bool check_cs(uint8_t *data,uint8_t len) 
+{   uint16_t cs = 0;
+    for(int i=0; i<len; i++){
+        cs += data[i];
+    }
+    cs = cs&0xFF;
+    if(cs == mydata.cs){
+        return true;
+    }else{
+        NRF_LOG_INFO("CS ERROR");
+        return false;
+    }
+}
 bool get_package_valid(uint8_t *data)             /*Determine if it is a valid package*/
 {
     if(data[0] == 0x55 & data[1] == 0xAA){
@@ -181,10 +223,14 @@ bool get_package_valid(uint8_t *data)             /*Determine if it is a valid p
         mydata.ctr1  = data[5];
         mydata.addr  = ((data[6] << 24) | (data[7] << 16) | (data[8] << 8) | (data[9]));
         memcpy(mydata.flash_data,data+10,mydata.len);
-        if((mydata.ctr0 == 0x10) && (mydata.ctr1 ==0x10)){/*recevice down*/
-          return false;
+        if(check_cs(data+4,mydata.len+6)){
+          if((mydata.ctr0 == 0x10) && (mydata.ctr1 ==0x10)){/*receive boot0||boot1 or application down done*/
+            return false;
+          }else{
+            return true;
+          }
         }else{
-          return true;
+            return false;
         }
         
     }else{
@@ -194,15 +240,15 @@ bool get_package_valid(uint8_t *data)             /*Determine if it is a valid p
 static bool check_address(uint32_t incom_addr,uint32_t partition_addr)                                      /*Check if the incoming address is legal */
 {
     if(partition_addr == APP_ADDR){
-        if((incom_addr >= APP_ADDR) && (incom_addr <= 0x7B000)){/*200K*/
-          return true;
+        if(incom_addr <= APP_OFFSET){
+            return true;
         }
     }else if(partition_addr == BOOT0_ADDR){
-       if((incom_addr >= BOOT0_ADDR) && (incom_addr < BOOT1_ADDR)){
+       if(incom_addr <= 0xF000){
           return true;
        }
     }else if(partition_addr == BOOT1_ADDR){
-       if((incom_addr >= BOOT1_ADDR) && (incom_addr < APP_ADDR)){
+       if(incom_addr <= 0xF000){
           return true;
        }
     }else{/*softdevice_add*/
@@ -210,6 +256,7 @@ static bool check_address(uint32_t incom_addr,uint32_t partition_addr)          
     }
     return false;
 }
+#if 0
 static void verify_and_write_flash(uint8_t *data,size_t datasize)                  /*verify and write flash*/
 {
     if(get_package_valid(data)){                                            /*Data valid*/
@@ -221,30 +268,172 @@ static void verify_and_write_flash(uint8_t *data,size_t datasize)               
                 }
                 vortex2_flash_write_bytes(mydata.addr,mydata.flash_data,mydata.len);
                 report_hid_data(report_success_data);
-                memset(mydata.flash_data,0xFF,32);
+                memset(mydata.flash_data,0xFF,mydata.len);
             }else{
                 NRF_LOG_INFO("check_address_fail");
                 report_hid_data(report_fail_data);
             }
         }else if((mydata.ctr0 ==writeflash) && (mydata.ctr1 == boot0_flash)){            /*write boot0*/
             if(check_address(mydata.addr,BOOT0_ADDR)){
+                if(mydata.addr % 0x1000 == 0){
+                    vortex2_flash_page_erase(mydata.addr);
+                    NRF_LOG_INFO("erase_page=0x%X",mydata.addr);
+                }
+                vortex2_flash_write_bytes(mydata.addr,mydata.flash_data,mydata.len);
+                report_hid_data(report_success_data);
+                memset(mydata.flash_data,0xFF,mydata.len);
+            }else{
+                NRF_LOG_INFO("check_address_fail");
+                report_hid_data(report_fail_data);
             }
             NRF_LOG_INFO("writeflash---boot0_flash");
         }else if((mydata.ctr0 ==writeflash) && (mydata.ctr1 == boot1_flash)){             /*write boot1*/
             if(check_address(mydata.addr,BOOT1_ADDR)){
+                if(mydata.addr % 0x1000 == 0){
+                    vortex2_flash_page_erase(mydata.addr);
+                    NRF_LOG_INFO("erase_page=0x%X",mydata.addr);
+                }
+                vortex2_flash_write_bytes(mydata.addr,mydata.flash_data,mydata.len);
+                report_hid_data(report_success_data);
+                memset(mydata.flash_data,0xFF,mydata.len);
+            }else{
+                NRF_LOG_INFO("check_address_fail");
+                report_hid_data(report_fail_data);
             }
             NRF_LOG_INFO("writeflash---boot1_flash");
         }else{                                                                     /*Reserved data interface*/
             NRF_LOG_INFO("else");
         }
-    }else{                                                                         /*Data err or recevice down*/
-        if(mydata.ctr0 == 0x10 && mydata.ctr1 == 0x10){                             
+    }else{                                                                         /*Data err or receive down*/
+        if(mydata.ctr0 == 0x10 && mydata.ctr1 == 0x10){                            /*receive download done */ 
             now_status = idle_status;
-            NRF_LOG_INFO("report recevie done data");
-            report_hid_data(report_recevice_done_data);                            /*report recevice done data*/
-            vortex2_updata_vram_messge("APP_OK");
+            NRF_LOG_INFO("report receive done data");
+            report_hid_data(report_receive_done_data);                            /*report receive done data*/
+            if(mydata.addr == BOOT0_ADDR){                                         /*down boot0 is over*/
+                vortex2_updata_vram_messge(VRAM_ADDR,"boot0");
+            }else if(mydata.addr == BOOT1_ADDR){                                   /*down boot1 is over*/
+                vortex2_updata_vram_messge(VRAM_ADDR,"boot1");
+            }else if(mydata.addr == APP_ADDR){                                     /*down application is over*/
+                vortex2_updata_vram_messge(VRAM_ADDR+8,"APP_OK");
+                __disable_irq();                                                   
+                NVIC_SystemReset();                                                /*down over system reset*/
+            }else{
+            }
+        }else{
+            report_hid_data(report_fail_data);
         }
     }
+}
+#endif
+uint32_t recevice_app_len = 0;
+uint8_t  flash_region = 0;
+static void vortex2_move_flash(uint8_t num,uint32_t addr){
+    if(addr == APP_ADDR){
+        vortex2_updata_vram_messge(VRAM_ADDR+8,"APPERR");
+        for(int i = 0;i <num; i++){                                                               /*erase application */
+            vortex2_flash_page_erase(APP_ADDR+(uint32_t)(i * 0x1000));
+        }
+        vortex2_flash_write_words(APP_ADDR, (const uint32_t *)APP_VSTART,(recevice_app_len/4)+1);
+        vortex2_updata_vram_messge(VRAM_ADDR+8,"APP_OK");
+    }else if(addr == BOOT0_ADDR){
+        for(int i = 0;i <num; i++){                                                               /*erase boot0 */
+          if(i >= 15){
+          }else{
+            vortex2_flash_page_erase(BOOT0_ADDR+(uint32_t)(i * 0x1000));
+          }
+        }
+        vortex2_flash_write_words(BOOT0_ADDR, (const uint32_t *)APP_VSTART,(recevice_app_len/4)+1);
+        vortex2_updata_vram_messge(VRAM_ADDR,"boot1");
+    }else if(addr == BOOT1_ADDR){
+        for(int i = 0;i <num; i++){                                                               /*erase boot1  */
+          if(i >= 15){
+          }else{
+            vortex2_flash_page_erase(BOOT1_ADDR+(uint32_t)(i * 0x1000));
+          }
+        }
+        vortex2_flash_write_words(BOOT1_ADDR, (const uint32_t *)APP_VSTART,(recevice_app_len/4)+1);
+        vortex2_updata_vram_messge(VRAM_ADDR,"boot1");
+    }else{
+    }
+}
+
+
+static void verify_and_write_flash(uint8_t *data,size_t datasize){
+    if(get_package_valid(data)){                                  /*get message and check cs*/
+        if((mydata.ctr0 ==writeflash) && (mydata.ctr1 == app_flash)){                         /*write application*/
+            if(check_address(mydata.addr,APP_ADDR)){                                    
+                recevice_app_len += mydata.len;
+                if(((recevice_app_len >= (uint32_t)(flash_region * 0x1000)))){
+                    vortex2_flash_page_erase(APP_VSTART + (flash_region * 0x1000));
+                    flash_region += 1;
+                }
+                vortex2_flash_write_bytes(mydata.addr + APP_VSTART,mydata.flash_data,mydata.len);
+                report_hid_data(report_success_data);
+                memset(mydata.flash_data,0xFF,mydata.len);
+            }else{
+                NRF_LOG_INFO("check_address_fail");
+                report_hid_data(report_fail_data);
+            }
+        }else if((mydata.ctr0 ==writeflash) && (mydata.ctr1 == boot0_flash)){                 /*write boot0*/
+            if(check_address(mydata.addr,BOOT0_ADDR)){                                    
+                recevice_app_len += mydata.len;
+                if(((recevice_app_len >= (uint32_t)(flash_region * 0x1000)))){
+                    vortex2_flash_page_erase(APP_VSTART + (flash_region * 0x1000));
+                    flash_region += 1;
+                }
+                vortex2_flash_write_bytes(mydata.addr + APP_VSTART,mydata.flash_data,mydata.len);
+                report_hid_data(report_success_data);
+                memset(mydata.flash_data,0xFF,mydata.len);
+            }else{
+                NRF_LOG_INFO("check_address_fail");
+                report_hid_data(report_fail_data);
+            }
+        }else if((mydata.ctr0 ==writeflash) && (mydata.ctr1 == boot1_flash)){                 /*write boot1*/
+            if(check_address(mydata.addr,BOOT1_ADDR)){                                    
+                recevice_app_len += mydata.len;
+                if(((recevice_app_len >= (uint32_t)(flash_region * 0x1000)))){
+                    vortex2_flash_page_erase(APP_VSTART + (flash_region * 0x1000));
+                    flash_region += 1;
+                }
+                vortex2_flash_write_bytes(mydata.addr + APP_VSTART,mydata.flash_data,mydata.len);
+                report_hid_data(report_success_data);
+                memset(mydata.flash_data,0xFF,mydata.len);
+            }else{
+                NRF_LOG_INFO("check_address_fail");
+                report_hid_data(report_fail_data);
+            }
+        }else{
+
+        }
+    }else{                                                                         /*Data err or receive down*/
+        if(mydata.ctr0 == 0x10 && mydata.ctr1 == 0x10){                            /*receive download done */ 
+            now_status = idle_status;
+            NRF_LOG_INFO("report receive done data");
+            report_hid_data(report_receive_done_data);                            /*report receive done data*/
+            if(mydata.addr == BOOT0_ADDR){                                         /*down boot0 is over*/
+                vortex2_updata_vram_messge(VRAM_ADDR,"boot0");
+                vortex2_move_flash((recevice_app_len/0x1000)+1,BOOT0_ADDR);
+            }else if(mydata.addr == BOOT1_ADDR){                                   /*down boot1 is over*/
+                vortex2_updata_vram_messge(VRAM_ADDR,"boot1");
+                vortex2_move_flash((recevice_app_len/0x1000)+1,BOOT1_ADDR);
+            }else if(mydata.addr == APP_ADDR){                                     /*down application is over*/
+                vortex2_updata_vram_messge(VRAM_ADDR+8,"APP_OK");
+                vortex2_move_flash((recevice_app_len/0x1000)+1,APP_ADDR);
+                __disable_irq();                                                   
+                NVIC_SystemReset();                                                /*down over system reset*/
+            }else{
+            }
+        }else{
+            report_hid_data(report_fail_data);
+        }
+    }
+}
+
+static bool check_status(uint8_t *data){
+   if(data[0] == 0x55 && data[1] == 0xAA && data[2] == 0x06 && data[3] == 0x97){
+      return false;
+   }
+   return true;
 }
 static void resolution_hid_protocol(app_usbd_hid_generic_t const * p_generic){
     app_usbd_hid_inst_t const * p_hinst = &p_generic->specific.inst.hid_inst;
@@ -254,22 +443,34 @@ static void resolution_hid_protocol(app_usbd_hid_generic_t const * p_generic){
         memcpy(revevice_data,p_hinst->p_rep_buffer_out->p_buff+1,datasize);
         analyze_data(revevice_data);
     }else if(now_status ==write_status ){/*begin transmission *.bin*/
-        //NRF_LOG_INFO("verify_and_write_flash");
-        verify_and_write_flash(p_hinst->p_rep_buffer_out->p_buff+1,datasize);
+        //if(check_status(p_hinst->p_rep_buffer_out->p_buff+1)){
+            verify_and_write_flash(p_hinst->p_rep_buffer_out->p_buff+1,datasize);
+        /*}else{
+            NRF_LOG_INFO("try again")
+            flash_region = 0;
+            recevice_app_len = 0;
+          }
+        */
     }else{
     }
 }
 
 static void sendData(app_usbd_hid_generic_t const * p_generic){
     app_usbd_hid_inst_t const * p_hinst = &p_generic->specific.inst.hid_inst;
-    /*
+    //*p_hinst->p_rep_buffer_out->p_buff[1] = 0x01;
+    static uint8_t buf[64]={0};
     app_usbd_hid_generic_in_report_set(
             &m_app_hid_generic,
             p_hinst->p_rep_buffer_out->p_buff+1,
-            datasize);*/
+            datasize);
+            /*
+    app_usbd_hid_generic_in_report_set(
+            &m_app_hid_generic,
+            buf,
+            64);*/
             /*
     if(len % 0x1000 == 0){
-      vortex2_flash_page_erase(APP_ADDR+len);
+      vortex2_flash_page_erase(APP_ADDR+len); 
     }
     vortex2_flash_write_bytes(APP_ADDR+len,p_hinst->p_rep_buffer_out->p_buff+1,datasize-1);
     len += datasize-1;*/
@@ -282,8 +483,10 @@ static void hid_user_ev_handler(app_usbd_class_inst_t const * p_inst,
     {
         case APP_USBD_HID_USER_EVT_OUT_REPORT_READY:
         {
+            //NRF_LOG_INFO("recevice data");
             app_usbd_hid_generic_out_report_get(&m_app_hid_generic,&datasize);
             //sendData(&m_app_hid_generic);
+            //report_hid_data(report_success_data);
             resolution_hid_protocol(&m_app_hid_generic);
             break;
         }
@@ -307,7 +510,7 @@ static void hid_user_ev_handler(app_usbd_class_inst_t const * p_inst,
     }
 }
 
-
+#if 0
 static void cdc_acm_user_ev_handler(app_usbd_class_inst_t const * p_inst,
                                     app_usbd_cdc_acm_user_event_t event)
 {
@@ -368,16 +571,17 @@ static void cdc_acm_user_ev_handler(app_usbd_class_inst_t const * p_inst,
             break;
     }
 }
+#endif
 static const app_usbd_config_t usbd_config = {
     .ev_state_proc = usbd_user_ev_handler
 };
-
+/*
 static void init_usb_cdc(){
     ret_code_t ret;
     app_usbd_class_inst_t const * class_cdc_acm = app_usbd_cdc_acm_class_inst_get(&m_app_cdc_acm);
     ret = app_usbd_class_append(class_cdc_acm);
     APP_ERROR_CHECK(ret);
-}
+}*/
 
 static void init_usb_hid(){
     ret_code_t ret;
