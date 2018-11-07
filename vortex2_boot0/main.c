@@ -88,8 +88,7 @@
 #include "vortex2_jump.h"
 
 #define DEAD_BEEF                       0xDEADBEEF                                  /**< Value used as error code on stack dump, can be used to identify stack location on stack unwind. */
-#define MYNAME                          "boot0"
-#define VERSION                         "V0.1"
+
 
 #ifdef BSP_BUTTON_0
     #define PIN_IN BSP_BUTTON_0

@@ -1,6 +1,11 @@
 #ifndef VORTEX2_FLASH_H__
 #define VORTEX2_FLASH_H__
 #include "nrf_nvmc.h"
+
+#define MYNAME                          "boot0"
+#define VERSION                         "V0.1"
+#define COMPILE                         "Arduino"
+
 #define VRAM_ADDR                         0x2A000
 #define BOOT0_ADDR                        0x2B000
 #define BOOT1_ADDR                        0x3A000

@@ -178,6 +178,18 @@ static void report_hid_data(uint8_t *data)
     memcpy(report_data,data,10);
     app_usbd_hid_generic_in_report_set(&m_app_hid_generic,report_data,64);
 }
+
+static void report_hid_firmware_information(){
+    char firmware_data[60];
+    memset(firmware_data,0,60);
+    memset(report_data,0x00,REPORT_OUT_MAXSIZE);
+    report_data[0] = 0x55;
+    report_data[1] = 0xBB;
+    sprintf(firmware_data,"%s%s%s%s%s%s%s","{\"NAME\":\"",MYNAME,"\",\"COMPILE\":\"",COMPILE,"\",\"VERSION\":\"",VERSION,"\"}");
+    memcpy(report_data+2,firmware_data,60);
+    app_usbd_hid_generic_in_report_set(&m_app_hid_generic,report_data,64);
+}
+
 static void analyze_data(uint8_t *data)
 {
     if(data[0] == 0x55 && data[1] == 0xAA){
@@ -186,7 +198,10 @@ static void analyze_data(uint8_t *data)
             now_status = write_status;
             report_hid_data(report_success_data);
         }
+    }else if(data[0] == 0x55 && data[1] == 0xBB){/*return firmware information*/
+        report_hid_firmware_information();
     }else{/*Invalid data*/
+      
     }
 }
 struct protocol_data mydata;
