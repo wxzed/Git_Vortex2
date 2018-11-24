@@ -4,4 +4,5 @@
 
 void init_vortex2_usb(void);
 void uninit_vortex2_usb(void);
+void vortex2_download(void);
 #endif

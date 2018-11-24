@@ -220,6 +220,8 @@ static void blink()
     nrf_gpio_pin_clear(LED_4);
     nrf_delay_ms(100);
 }
+
+extern volatile int hid_sendSign;
 int main(void)
 {
     ret_code_t ret;
@@ -233,7 +235,7 @@ int main(void)
     nrf_gpio_pin_set(LED_2);
     nrf_gpio_pin_set(LED_4);*/
     //timers_init();
-    //power_management_init();
+    power_management_init();
     //init_vortex2_uart();
     button_init();
     //vortex2_app_start(APP_ADDR);
@@ -246,6 +248,12 @@ int main(void)
         {
         }
         //idle_state_handle();
+        if(hid_sendSign == 1){
+          vortex2_download();
+          //NRF_LOG_INFO("sendata");
+          hid_sendSign = 0;
+        }
+        //
     }
 }
 

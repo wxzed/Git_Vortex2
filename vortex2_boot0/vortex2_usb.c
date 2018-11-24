@@ -84,7 +84,9 @@
     0xc0 /* END_COLLECTION */                                       \
 }
 #endif
+
 APP_USBD_HID_GENERIC_SUBCLASS_REPORT_DESC(vortex_desc, APP_USBD_HID_VORTEX2_REPORT_DSC(0));
+
 static const app_usbd_hid_subclass_desc_t * reps[] = {&vortex_desc};
 
 static bool m_usb_connected = false;
@@ -229,7 +231,7 @@ static bool check_cs(uint8_t *data,uint8_t len)
 }
 bool get_package_valid(uint8_t *data)             /*Determine if it is a valid package*/
 {
-    if(data[0] == 0x55 & data[1] == 0xAA){
+    if(data[0] == 0x55 && data[1] == 0xAA){
         mydata.head0 = data[0];
         mydata.head1 = data[1];
         mydata.len   = data[2];
@@ -351,23 +353,27 @@ static void vortex2_move_flash(uint8_t num,uint32_t addr){
         vortex2_flash_write_words(APP_ADDR, (const uint32_t *)APP_VSTART,(recevice_app_len/4)+1);
         vortex2_updata_vram_messge(VRAM_ADDR+8,"APP_OK");
     }else if(addr == BOOT0_ADDR){
-        for(int i = 0;i <num; i++){                                                               /*erase boot0 */
-          if(i >= 15){
-          }else{
-            vortex2_flash_page_erase(BOOT0_ADDR+(uint32_t)(i * 0x1000));
+        if(strncmp(MYNAME,"boot1",strlen("boot1")) == 0){
+          for(int i = 0;i <num; i++){                                                               /*erase boot0 */
+             if(i >= 15){
+             }else{
+              vortex2_flash_page_erase(BOOT0_ADDR+(uint32_t)(i * 0x1000));
+            }
           }
+          vortex2_flash_write_words(BOOT0_ADDR, (const uint32_t *)APP_VSTART,(recevice_app_len/4)+1);
+          vortex2_updata_vram_messge(VRAM_ADDR,"boot0");
         }
-        vortex2_flash_write_words(BOOT0_ADDR, (const uint32_t *)APP_VSTART,(recevice_app_len/4)+1);
-        vortex2_updata_vram_messge(VRAM_ADDR,"boot1");
     }else if(addr == BOOT1_ADDR){
-        for(int i = 0;i <num; i++){                                                               /*erase boot1  */
-          if(i >= 15){
-          }else{
-            vortex2_flash_page_erase(BOOT1_ADDR+(uint32_t)(i * 0x1000));
+        if(strncmp(MYNAME,"boot0",strlen("boot0")) == 0){
+          for(int i = 0;i <num; i++){                                                               /*erase boot1  */
+            if(i >= 15){
+            }else{
+              vortex2_flash_page_erase(BOOT1_ADDR+(uint32_t)(i * 0x1000));
+            }
           }
+          vortex2_flash_write_words(BOOT1_ADDR, (const uint32_t *)APP_VSTART,(recevice_app_len/4)+1);
+          vortex2_updata_vram_messge(VRAM_ADDR,"boot1");
         }
-        vortex2_flash_write_words(BOOT1_ADDR, (const uint32_t *)APP_VSTART,(recevice_app_len/4)+1);
-        vortex2_updata_vram_messge(VRAM_ADDR,"boot1");
     }else{
     }
 }
@@ -426,13 +432,17 @@ static void verify_and_write_flash(uint8_t *data,size_t datasize){
             NRF_LOG_INFO("report receive done data");
             report_hid_data(report_receive_done_data);                            /*report receive done data*/
             if(mydata.addr == BOOT0_ADDR){                                         /*down boot0 is over*/
-                vortex2_updata_vram_messge(VRAM_ADDR,"boot0");
+                //vortex2_updata_vram_messge(VRAM_ADDR,"boot0");
                 vortex2_move_flash((recevice_app_len/0x1000)+1,BOOT0_ADDR);
+                __disable_irq();                                                   
+                NVIC_SystemReset();                                                /*down over system reset*/
             }else if(mydata.addr == BOOT1_ADDR){                                   /*down boot1 is over*/
-                vortex2_updata_vram_messge(VRAM_ADDR,"boot1");
+                //vortex2_updata_vram_messge(VRAM_ADDR,"boot1");
                 vortex2_move_flash((recevice_app_len/0x1000)+1,BOOT1_ADDR);
+                __disable_irq();                                                   
+                NVIC_SystemReset();                                                /*down over system reset*/
             }else if(mydata.addr == APP_ADDR){                                     /*down application is over*/
-                vortex2_updata_vram_messge(VRAM_ADDR+8,"APP_OK");
+                //vortex2_updata_vram_messge(VRAM_ADDR+8,"APP_OK");
                 vortex2_move_flash((recevice_app_len/0x1000)+1,APP_ADDR);
                 __disable_irq();                                                   
                 NVIC_SystemReset();                                                /*down over system reset*/
@@ -453,13 +463,16 @@ static bool check_status(uint8_t *data){
 static void resolution_hid_protocol(app_usbd_hid_generic_t const * p_generic){
     app_usbd_hid_inst_t const * p_hinst = &p_generic->specific.inst.hid_inst;
     if(now_status == idle_status){
+        
         uint8_t revevice_data[REPORT_OUT_MAXSIZE];
         memset(revevice_data,0,REPORT_OUT_MAXSIZE);
         memcpy(revevice_data,p_hinst->p_rep_buffer_out->p_buff+1,datasize);
         analyze_data(revevice_data);
+        //NRF_LOG_INFO("now_status");
     }else if(now_status ==write_status ){/*begin transmission *.bin*/
         //if(check_status(p_hinst->p_rep_buffer_out->p_buff+1)){
             verify_and_write_flash(p_hinst->p_rep_buffer_out->p_buff+1,datasize);
+            //NRF_LOG_INFO("write_status");
         /*}else{
             NRF_LOG_INFO("try again")
             flash_region = 0;
@@ -490,7 +503,10 @@ static void sendData(app_usbd_hid_generic_t const * p_generic){
     vortex2_flash_write_bytes(APP_ADDR+len,p_hinst->p_rep_buffer_out->p_buff+1,datasize-1);
     len += datasize-1;*/
 }
-
+volatile int hid_sendSign = 0;
+void vortex2_download(void){
+    resolution_hid_protocol(&m_app_hid_generic);
+}
 static void hid_user_ev_handler(app_usbd_class_inst_t const * p_inst,
                                 app_usbd_hid_user_event_t event)
 {
@@ -498,11 +514,14 @@ static void hid_user_ev_handler(app_usbd_class_inst_t const * p_inst,
     {
         case APP_USBD_HID_USER_EVT_OUT_REPORT_READY:
         {
-            //NRF_LOG_INFO("recevice data");
-            app_usbd_hid_generic_out_report_get(&m_app_hid_generic,&datasize);
-            //sendData(&m_app_hid_generic);
-            //report_hid_data(report_success_data);
-            resolution_hid_protocol(&m_app_hid_generic);
+            if(hid_sendSign == 0){
+                app_usbd_hid_generic_out_report_get(&m_app_hid_generic,&datasize);
+                hid_sendSign = 1;
+            }
+            //
+            //usb_receviced_data = true;
+            //app_usbd_hid_generic_out_report_get(&m_app_hid_generic,&datasize);
+            //resolution_hid_protocol(&m_app_hid_generic);
             break;
         }
         case APP_USBD_HID_USER_EVT_IN_REPORT_DONE:
